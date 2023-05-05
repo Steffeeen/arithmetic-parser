@@ -3,28 +3,28 @@ private data class InternalLexedToken(val token: Token, val remainingInput: Stri
 private data class InternalNoLexedToken(val remainingInput: String) : InternalLexResult
 private data class InternalLexError(val message: String) : InternalLexResult
 
-data class Token(val type: TokenType, val index: Int)
+sealed interface Token {
+    val index: Int
 
-sealed interface TokenType
-object TPlus : TokenType
-object TMinus : TokenType
-object TStar : TokenType
-object TSlash : TokenType
-object TLParen : TokenType
-object TRParen : TokenType
-data class TNumber(val value: Double) : TokenType
-
-object EOF : TokenType
+    data class Plus(override val index: Int) : Token
+    data class Minus(override val index: Int) : Token
+    data class Star(override val index: Int) : Token
+    data class Slash(override val index: Int) : Token
+    data class LParen(override val index: Int) : Token
+    data class RParen(override val index: Int) : Token
+    data class Number(override val index: Int, val value: Double) : Token
+    data class EOF(override val index: Int) : Token
+}
 
 private fun lexSingleToken(input: String, index: Int): InternalLexResult = when (input.firstOrNull()) {
-    null -> InternalLexedToken(Token(EOF, index), "")
+    null -> InternalLexedToken(Token.EOF(index), "")
     ' ' -> InternalNoLexedToken(input.drop(1))
-    '+' -> InternalLexedToken(Token(TPlus, index), input.drop(1))
-    '-' -> InternalLexedToken(Token(TMinus, index), input.drop(1))
-    '*' -> InternalLexedToken(Token(TStar, index), input.drop(1))
-    '/' -> InternalLexedToken(Token(TSlash, index), input.drop(1))
-    '(' -> InternalLexedToken(Token(TLParen, index), input.drop(1))
-    ')' -> InternalLexedToken(Token(TRParen, index), input.drop(1))
+    '+' -> InternalLexedToken(Token.Plus(index), input.drop(1))
+    '-' -> InternalLexedToken(Token.Minus(index), input.drop(1))
+    '*' -> InternalLexedToken(Token.Star(index), input.drop(1))
+    '/' -> InternalLexedToken(Token.Slash(index), input.drop(1))
+    '(' -> InternalLexedToken(Token.LParen(index), input.drop(1))
+    ')' -> InternalLexedToken(Token.RParen(index), input.drop(1))
     '.', in '0'..'9' -> parseFloatLiteral(input, index)
     else -> InternalLexError("Unexpected char ${input.first()} at index $index")
 }
@@ -55,13 +55,10 @@ private fun parseFloatLiteral(input: String, index: Int): InternalLexResult {
     var currentState = 0
     var inputIndex = 0
 
-    fun lexResult(): InternalLexResult = if (currentState in acceptingStates) InternalLexedToken(
-        Token(
-            TNumber(
-                input.take(inputIndex).replace(Regex("[fFlL]"), "").toDouble()
-            ), index
-        ), input.drop(inputIndex)
-    ) else InternalLexError("Failed to parse float at index ${index + inputIndex}")
+    fun lexResult(): InternalLexResult = if (currentState in acceptingStates) {
+        val token = Token.Number(index, input.take(inputIndex).replace(Regex("[fFlL]"), "").toDouble())
+        InternalLexedToken(token, input.drop(inputIndex))
+    } else InternalLexError("Failed to parse float at index ${index + inputIndex}")
     while (true) {
         val char = input.getOrNull(inputIndex) ?: return lexResult()
         val transition = transitions.find { it.fromState == currentState && char in it.chars } ?: return lexResult()
@@ -70,9 +67,10 @@ private fun parseFloatLiteral(input: String, index: Int): InternalLexResult {
     }
 }
 
-interface LexResult
-data class LexSuccess(val tokens: List<Token>) : LexResult
-data class LexError(val message: String) : LexResult
+sealed interface LexResult {
+    data class Success(val tokens: List<Token>) : LexResult
+    data class Error(val message: String) : LexResult
+}
 
 fun lex(input: String): LexResult {
     val tokens = mutableListOf<Token>()
@@ -86,12 +84,12 @@ fun lex(input: String): LexResult {
 
     while (true) {
         when (val result = lexSingleToken(remainingInput, currentIndex)) {
-            is InternalLexError -> return LexError(result.message)
+            is InternalLexError -> return LexResult.Error(result.message)
             is InternalLexedToken -> {
                 tokens += result.token
                 updateValues(result.remainingInput)
-                if (result.token.type == EOF) {
-                    return LexSuccess(tokens)
+                if (result.token is Token.EOF) {
+                    return LexResult.Success(tokens)
                 }
             }
 

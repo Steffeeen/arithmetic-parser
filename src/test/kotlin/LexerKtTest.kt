@@ -8,37 +8,37 @@ class LexerKtTest {
     fun `simple lex`() {
         val result = lex("+ - * / () 1.23e5")
         val expectedTokens = listOf(
-            Token(TPlus, 0),
-            Token(TMinus, 2),
-            Token(TStar, 4),
-            Token(TSlash, 6),
-            Token(TLParen, 8),
-            Token(TRParen, 9),
-            Token(TNumber(123000.0), 11),
-            Token(EOF, 17)
+            Token.Plus(0),
+            Token.Minus(2),
+            Token.Star(4),
+            Token.Slash(6),
+            Token.LParen(8),
+            Token.RParen(9),
+            Token.Number(11, 123000.0),
+            Token.EOF(17)
         )
-        assertIs<LexSuccess>(result)
+        assertIs<LexResult.Success>(result)
         assertEquals(expectedTokens, result.tokens)
     }
 
     @Test
     fun `float literal starting with dot`() {
         val result = lex(".5f")
-        assertIs<LexSuccess>(result)
-        assertEquals(listOf(Token(TNumber(0.5), 0), Token(EOF, 3)), result.tokens)
+        assertIs<LexResult.Success>(result)
+        assertEquals(listOf(Token.Number(0, 0.5), Token.EOF(3)), result.tokens)
     }
 
     @Test
     fun `multiple floats`() {
         val result = lex(".5 0.3")
-        assertIs<LexSuccess>(result)
-        assertEquals(listOf(Token(TNumber(0.5), 0), Token(TNumber(0.3), 3), Token(EOF, 6)), result.tokens)
+        assertIs<LexResult.Success>(result)
+        assertEquals(listOf(Token.Number(0, 0.5), Token.Number(3, 0.3), Token.EOF(6)), result.tokens)
     }
 
     @Test
     fun `invalid float`() {
         val input = "0.5.f"
         val result = lex(input)
-        assertIs<LexError>(result)
+        assertIs<LexResult.Error>(result)
     }
 }

@@ -1,5 +1,5 @@
+
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.fail
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
@@ -66,9 +66,4 @@ class ParserKtTest {
     )
 
     private fun product(a: Double): Product = Product(Primitive.Number(a), ProductPart.Empty)
-
-    private fun toTokenList(input: String): List<Token> = when (val result = lex(input)) {
-        is LexResult.Success -> result.tokens
-        is LexResult.Error -> fail("lex error: ${result.message}")
-    }
 }

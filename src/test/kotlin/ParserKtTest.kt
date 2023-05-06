@@ -50,14 +50,18 @@ class ParserKtTest {
 
     @Test
     fun `error 1`() {
-        val result = parse(toTokenList("5.5 * ( .3"))
-        assertIs<ParseResult.Error>(result)
+        val input = "5.5 * ( .3"
+        val result = parse(toTokenList(input))
+        assertIs<ParseError>(result)
+        println(createErrorMessage(input, Error.Parse(result)))
     }
 
     @Test
     fun `error 2`() {
-        val result = parse(toTokenList("1.1 2.0"))
-        assertIs<ParseResult.Error>(result)
+        val input = "1.1 2.0"
+        val result = parse(toTokenList(input))
+        assertIs<ParseError>(result)
+        println(createErrorMessage(input, Error.Parse(result)))
     }
 
     private fun product(a: Double, b: Double): Product = Product(

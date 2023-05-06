@@ -1,7 +1,6 @@
 private sealed interface InternalLexResult
 private data class InternalLexedToken(val token: Token, val remainingInput: String) : InternalLexResult
 private data class InternalNoLexedToken(val remainingInput: String) : InternalLexResult
-private data class InternalLexError(val message: String) : InternalLexResult
 
 sealed interface Token {
     val index: Int
@@ -26,7 +25,7 @@ private fun lexSingleToken(input: String, index: Int): InternalLexResult = when 
     '(' -> InternalLexedToken(Token.LParen(index), input.drop(1))
     ')' -> InternalLexedToken(Token.RParen(index), input.drop(1))
     '.', in '0'..'9' -> parseFloatLiteral(input, index)
-    else -> InternalLexError("Unexpected char ${input.first()} at index $index")
+    else -> LexError.UnexpectedChar(input.first(), index)
 }
 
 private fun parseFloatLiteral(input: String, index: Int): InternalLexResult {
@@ -58,7 +57,7 @@ private fun parseFloatLiteral(input: String, index: Int): InternalLexResult {
     fun lexResult(): InternalLexResult = if (currentState in acceptingStates) {
         val token = Token.Number(index, input.take(inputIndex).replace(Regex("[fFlL]"), "").toDouble())
         InternalLexedToken(token, input.drop(inputIndex))
-    } else InternalLexError("Failed to parse float at index ${index + inputIndex}")
+    } else LexError.InvalidFloat(index + inputIndex)
     while (true) {
         val char = input.getOrNull(inputIndex) ?: return lexResult()
         val transition = transitions.find { it.fromState == currentState && char in it.chars } ?: return lexResult()
@@ -69,8 +68,16 @@ private fun parseFloatLiteral(input: String, index: Int): InternalLexResult {
 
 sealed interface LexResult {
     data class Success(val tokens: List<Token>) : LexResult
-    data class Error(val message: String) : LexResult
 }
+
+private sealed interface LexerInternalErrors : InternalLexResult
+
+sealed interface LexError : LexResult {
+    data class UnexpectedChar(val char: Char, val index: Int) : LexError, LexerInternalErrors
+    data class InvalidFloat(val index: Int) : LexError, LexerInternalErrors
+}
+
+private fun LexerInternalErrors.toLexError(): LexError = this as LexError
 
 fun lex(input: String): LexResult {
     val tokens = mutableListOf<Token>()
@@ -84,7 +91,7 @@ fun lex(input: String): LexResult {
 
     while (true) {
         when (val result = lexSingleToken(remainingInput, currentIndex)) {
-            is InternalLexError -> return LexResult.Error(result.message)
+            is LexerInternalErrors -> return result.toLexError()
             is InternalLexedToken -> {
                 tokens += result.token
                 updateValues(result.remainingInput)

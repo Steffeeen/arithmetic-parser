@@ -39,6 +39,6 @@ class LexerKtTest {
     fun `invalid float`() {
         val input = "0.5.f"
         val result = lex(input)
-        assertIs<LexResult.Error>(result)
+        assertIs<LexError>(result)
     }
 }

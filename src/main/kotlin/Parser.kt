@@ -34,24 +34,31 @@ sealed interface Primitive : AstNode {
 
 sealed interface ParseResult {
     data class Success(val expression: Expression) : ParseResult
-    data class Error(val message: String) : ParseResult
+//    data class Error(val message: String) : ParseResult
 }
 
 fun parse(tokens: List<Token>): ParseResult {
-    val (expression, remainingTokens) = parseExpression(tokens).onError { return ParseResult.Error(it.message) }
-    expect<Token.EOF>(remainingTokens).onError { return ParseResult.Error(it.message) }
+    val (expression, remainingTokens) = parseExpression(tokens).onError { return it.toParseError() }
+    expect<Token.EOF>(remainingTokens).onError { return it.toParseError() }
     return ParseResult.Success(expression)
 }
 
-private data class Error(val message: String) : ParseSubResult<Nothing>, ExpectResult<Nothing>
+private sealed interface ParserInternalErrors : ParseSubResult<Nothing>, ExpectResult<Nothing>
+
+sealed interface ParseError : ParseResult {
+    data class ExpectedToken(val index: Int, val simpleName: String) : ParseError, ParserInternalErrors
+    data class ExpectedOneOfTokens(val expectedTokens: List<Token>) : ParseError, ParserInternalErrors
+}
+
+private fun ParserInternalErrors.toParseError(): ParseError = this as ParseError
 
 private sealed interface ParseSubResult<out T : AstNode> {
     data class Success<out T : AstNode>(val astNode: T, val remainingTokens: List<Token>) : ParseSubResult<T>
 }
 
-private inline fun <T : AstNode> ParseSubResult<T>.onError(handler: (error: Error) -> Nothing): ParseSubResult.Success<T> =
+private inline fun <T : AstNode> ParseSubResult<T>.onError(handler: (parseError: ParserInternalErrors) -> Nothing): ParseSubResult.Success<T> =
     when (this) {
-        is Error -> handler(this)
+        is ParserInternalErrors -> handler(this)
         is ParseSubResult.Success<T> -> this
     }
 
@@ -127,25 +134,28 @@ private fun parsePrimitive(tokens: List<Token>): ParseSubResult<Primitive> = whe
         ParseSubResult.Success(Primitive.Number(number.value), remainingTokens)
     }
 
-    else -> Error("Expected one of ${toString<Token.LParen>()} or ${toString<Token.Number>()}")
+    else -> ParseError.ExpectedOneOfTokens(
+        listOf(
+            Token.LParen(tokens.first().index),
+            Token.Number(tokens.first().index, 0.0)
+        )
+    )
 }
 
 private sealed interface ExpectResult<out T : Token> {
     data class Success<T : Token>(val token: T, val remainingTokens: List<Token>) : ExpectResult<T>
 }
 
-private inline fun <T : Token> ExpectResult<T>.onError(handler: (error: Error) -> Nothing): ExpectResult.Success<T> =
+private inline fun <T : Token> ExpectResult<T>.onError(handler: (parseError: ParserInternalErrors) -> Nothing): ExpectResult.Success<T> =
     when (this) {
-        is Error -> handler(this)
+        is ParserInternalErrors -> handler(this)
         is ExpectResult.Success<T> -> this
     }
 
 private inline fun <reified T : Token> expect(tokens: List<Token>): ExpectResult<T> {
     val first = tokens.first()
     if (first !is T) {
-        return Error("Expected ${toString<T>()}")
+        return ParseError.ExpectedToken(first.index, T::class.simpleName!!)
     }
     return ExpectResult.Success(first, tokens.drop(1))
 }
-
-private inline fun <reified T : Token> toString() = "${T::class.simpleName}"

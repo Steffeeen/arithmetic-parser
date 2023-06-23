@@ -1,3 +1,3 @@
 
-rootProject.name = "compilerbau"
+rootProject.name = "calculator"
 

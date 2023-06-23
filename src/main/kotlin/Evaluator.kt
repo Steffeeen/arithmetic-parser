@@ -1,53 +1,19 @@
-fun evaluate(expression: Expression): Double {
-    return evalNode(expression)
+fun evaluate(node: AstNode): Double {
+    return evalNode(node)
 }
 
 private fun evalNode(node: AstNode): Double = when (node) {
-    is Expression -> evalNode(node.sum)
-    is Primitive.Number -> node.value
-    is Primitive.Parenthesis -> evalNode(node.expression)
     is Product -> evalProduct(node)
     is Sum -> evalSum(node)
-    is ProductPart.Empty -> error("empty ProductPart in evalNode")
-    is ProductPart.NonEmpty -> error("non-empty ProductPart in evalNode")
-    is SumPart.Empty -> error("empty SumPart in evalNode")
-    is SumPart.NonEmpty -> error("non-empty SumPart in evalNode")
+    is Number -> node.value
 }
 
-private fun evalSum(sum: Sum): Double {
-    val product = evalProduct(sum.product)
-    return evalSumPart(product, sum.sumPart)
+private fun evalSum(sum: Sum): Double = when (sum.symbol) {
+    Sum.SumSymbol.PLUS -> evalNode(sum.left) + evalNode(sum.right)
+    Sum.SumSymbol.MINUS -> evalNode(sum.left) - evalNode(sum.right)
 }
 
-private fun evalSumPart(value: Double, sumPart: SumPart): Double = when (sumPart) {
-    is SumPart.Empty -> value
-    is SumPart.NonEmpty -> {
-        val product = evalNode(sumPart.product)
-        val newValue = combineWithSymbol(value, product, sumPart.symbol)
-        evalSumPart(newValue, sumPart.sumPart)
-    }
-}
-
-private fun evalProduct(product: Product): Double {
-    val primitive = evalNode(product.primitive)
-    return evalProductPart(primitive, product.productPart)
-}
-
-private fun evalProductPart(value: Double, productPart: ProductPart): Double = when (productPart) {
-    is ProductPart.Empty -> value
-    is ProductPart.NonEmpty -> {
-        val primitive = evalNode(productPart.primitive)
-        val newValue = combineWithSymbol(value, primitive, productPart.symbol)
-        evalProductPart(newValue, productPart.productPart)
-    }
-}
-
-private fun combineWithSymbol(a: Double, b: Double, symbol: ProductPart.ProductSymbol): Double = when (symbol) {
-    ProductPart.ProductSymbol.STAR -> a * b
-    ProductPart.ProductSymbol.SLASH -> a / b
-}
-
-private fun combineWithSymbol(a: Double, b: Double, symbol: SumPart.SumSymbol): Double = when (symbol) {
-    SumPart.SumSymbol.PLUS -> a + b
-    SumPart.SumSymbol.MINUS -> a - b
+private fun evalProduct(product: Product): Double = when (product.symbol) {
+    Product.ProductSymbol.STAR -> evalNode(product.left) * evalNode(product.right)
+    Product.ProductSymbol.SLASH -> evalNode(product.left) / evalNode(product.right)
 }

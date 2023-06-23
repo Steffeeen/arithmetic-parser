@@ -1,5 +1,4 @@
 /*
-Expression  -> Sum
 Sum         -> Product SumPart
 SumPart     -> + Product SumPart | - Product SumPart | e
 Product     -> Primitive ProductPart
@@ -9,38 +8,25 @@ Primitive   -> (Expression) | number
 
 sealed interface AstNode
 
-data class Expression(val sum: Sum) : AstNode
-data class Sum(val product: Product, val sumPart: SumPart) : AstNode
-data class Product(val primitive: Primitive, val productPart: ProductPart) : AstNode
-
-sealed interface SumPart : AstNode {
+data class Sum(val left: AstNode, val right: AstNode, val symbol: SumSymbol) : AstNode {
     enum class SumSymbol { PLUS, MINUS }
-    object Empty : SumPart
-    data class NonEmpty(val symbol: SumSymbol, val product: Product, val sumPart: SumPart) : SumPart
 }
 
-
-sealed interface ProductPart : AstNode {
+data class Product(val left: AstNode, val right: AstNode, val symbol: ProductSymbol) : AstNode {
     enum class ProductSymbol { STAR, SLASH }
-    object Empty : ProductPart
-    data class NonEmpty(val symbol: ProductSymbol, val primitive: Primitive, val productPart: ProductPart) :
-        ProductPart
 }
 
-sealed interface Primitive : AstNode {
-    data class Number(val value: Double) : Primitive
-    data class Parenthesis(val expression: Expression) : Primitive
-}
+data class Number(val value: Double) : AstNode
 
 sealed interface ParseResult {
-    data class Success(val expression: Expression) : ParseResult
+    data class Success(val root: AstNode) : ParseResult
 //    data class Error(val message: String) : ParseResult
 }
 
 fun parse(tokens: List<Token>): ParseResult {
-    val (expression, remainingTokens) = parseExpression(tokens).onError { return it.toParseError() }
+    val (sum, remainingTokens) = parseSum(tokens).onError { return it.toParseError() }
     expect<Token.EOF>(remainingTokens).onError { return it.toParseError() }
-    return ParseResult.Success(expression)
+    return ParseResult.Success(sum)
 }
 
 private sealed interface ParserInternalErrors : ParseSubResult<Nothing>, ExpectResult<Nothing>
@@ -62,76 +48,83 @@ private inline fun <T : AstNode> ParseSubResult<T>.onError(handler: (parseError:
         is ParseSubResult.Success<T> -> this
     }
 
-private fun parseExpression(tokens: List<Token>): ParseSubResult<Expression> {
-    val (sum, remainingTokens) = parseSum(tokens).onError { return it }
-    return ParseSubResult.Success(Expression(sum), remainingTokens)
-}
-
-private fun parseSum(tokens: List<Token>): ParseSubResult<Sum> {
+private fun parseSum(tokens: List<Token>): ParseSubResult<AstNode> {
     val (product, remainingTokens) = parseProduct(tokens).onError { return it }
-    val (sumPart, remainingTokens2) = parseSumPart(remainingTokens).onError { return it }
-    return ParseSubResult.Success(Sum(product, sumPart), remainingTokens2)
+    return parseSumPart(remainingTokens, product).onError { return it }
 }
 
-private fun parseProduct(tokens: List<Token>): ParseSubResult<Product> {
+private fun parseProduct(tokens: List<Token>): ParseSubResult<AstNode> {
     val (primitive, remainingTokens) = parsePrimitive(tokens).onError { return it }
-    val (productPart, remainingTokens2) = parseProductPart(remainingTokens).onError { return it }
-    return ParseSubResult.Success(Product(primitive, productPart), remainingTokens2)
+    return parseProductPart(remainingTokens, primitive).onError { return it }
 }
 
-private fun parseSumPart(tokens: List<Token>): ParseSubResult<SumPart> = when (tokens.first()) {
+private fun parseSumPart(tokens: List<Token>, left: AstNode): ParseSubResult<AstNode> = when (tokens.first()) {
     is Token.Plus -> {
         val (_, remainingTokens) = expect<Token.Plus>(tokens).onError { return it }
-        val (product, remainingTokens2) = parseProduct(remainingTokens).onError { return it }
-        val (sumPart, remainingTokens3) = parseSumPart(remainingTokens2).onError { return it }
-        ParseSubResult.Success(SumPart.NonEmpty(SumPart.SumSymbol.PLUS, product, sumPart), remainingTokens3)
+        val (right, remainingTokens2) = parseProduct(remainingTokens).onError { return it }
+        val sum = Sum(left, right, Sum.SumSymbol.PLUS)
+        parseSumPart(remainingTokens2, sum).onError { return it }
     }
 
     is Token.Minus -> {
         val (_, remainingTokens) = expect<Token.Minus>(tokens).onError { return it }
-        val (product, remainingTokens2) = parseProduct(remainingTokens).onError { return it }
-        val (sumPart, remainingTokens3) = parseSumPart(remainingTokens2).onError { return it }
-        ParseSubResult.Success(SumPart.NonEmpty(SumPart.SumSymbol.MINUS, product, sumPart), remainingTokens3)
+        val (right, remainingTokens2) = parseProduct(remainingTokens).onError { return it }
+        val sum = Sum(left, right, Sum.SumSymbol.MINUS)
+        parseSumPart(remainingTokens2, sum).onError { return it }
     }
 
-    else -> ParseSubResult.Success(SumPart.Empty, tokens)
+    is Token.EOF, is Token.RParen -> ParseSubResult.Success(left, tokens)
+
+    else -> ParseError.ExpectedOneOfTokens(
+        listOf(
+            Token.Plus(tokens.first().index),
+            Token.Minus(tokens.first().index),
+            Token.RParen(tokens.first().index),
+            Token.EOF(tokens.first().index)
+        )
+    )
 }
 
-private fun parseProductPart(tokens: List<Token>): ParseSubResult<ProductPart> = when (tokens.first()) {
+private fun parseProductPart(tokens: List<Token>, left: AstNode): ParseSubResult<AstNode> = when (tokens.first()) {
     is Token.Star -> {
         val (_, remainingTokens) = expect<Token.Star>(tokens).onError { return it }
         val (primitive, remainingTokens2) = parsePrimitive(remainingTokens).onError { return it }
-        val (productPart, remainingTokens3) = parseProductPart(remainingTokens2).onError { return it }
-        ParseSubResult.Success(
-            ProductPart.NonEmpty(ProductPart.ProductSymbol.STAR, primitive, productPart),
-            remainingTokens3
-        )
+        val product = Product(left, primitive, Product.ProductSymbol.STAR)
+        parseProductPart(remainingTokens2, product).onError { return it }
     }
 
     is Token.Slash -> {
         val (_, remainingTokens) = expect<Token.Slash>(tokens).onError { return it }
         val (primitive, remainingTokens2) = parsePrimitive(remainingTokens).onError { return it }
-        val (productPart, remainingTokens3) = parseProductPart(remainingTokens2).onError { return it }
-        ParseSubResult.Success(
-            ProductPart.NonEmpty(ProductPart.ProductSymbol.SLASH, primitive, productPart),
-            remainingTokens3
-        )
+        val product = Product(left, primitive, Product.ProductSymbol.SLASH)
+        parseProductPart(remainingTokens2, product).onError { return it }
     }
 
-    else -> ParseSubResult.Success(ProductPart.Empty, tokens)
+    is Token.Plus, is Token.Minus, is Token.RParen, is Token.EOF -> ParseSubResult.Success(left, tokens)
+
+    else -> ParseError.ExpectedOneOfTokens(
+        listOf(
+            Token.Star(tokens.first().index),
+            Token.Slash(tokens.first().index),
+            Token.Plus(tokens.first().index),
+            Token.Minus(tokens.first().index),
+            Token.RParen(tokens.first().index),
+            Token.EOF(tokens.first().index),
+        )
+    )
 }
 
-private fun parsePrimitive(tokens: List<Token>): ParseSubResult<Primitive> = when (tokens.first()) {
+private fun parsePrimitive(tokens: List<Token>): ParseSubResult<AstNode> = when (tokens.first()) {
     is Token.LParen -> {
         val (_, remainingTokens) = expect<Token.LParen>(tokens).onError { return it }
-        val (expression, remainingTokens2) = parseExpression(remainingTokens).onError { return it }
+        val (sum, remainingTokens2) = parseSum(remainingTokens).onError { return it }
         val (_, remainingTokens3) = expect<Token.RParen>(remainingTokens2).onError { return it }
-        ParseSubResult.Success(Primitive.Parenthesis(expression), remainingTokens3)
+        ParseSubResult.Success(sum, remainingTokens3)
     }
 
     is Token.Number -> {
         val (number, remainingTokens) = expect<Token.Number>(tokens).onError { return it }
-        ParseSubResult.Success(Primitive.Number(number.value), remainingTokens)
+        ParseSubResult.Success(Number(number.value), remainingTokens)
     }
 
     else -> ParseError.ExpectedOneOfTokens(

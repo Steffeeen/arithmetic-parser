@@ -1,3 +1,6 @@
+import kotlin.math.max
+import kotlin.math.min
+
 sealed interface Error {
     data class Parse(val parseError: ParseError) : Error
     data class Lex(val lexError: LexError) : Error
@@ -46,7 +49,10 @@ private fun createHighlightedErrorMessage(message: String, input: String, index:
 private const val CONTEXT_SIZE = 10
 private fun createShownIndex(input: String, index: Int): Pair<String, String> {
     return if (input.length > CONTEXT_SIZE) {
-        val firstLine = (input + " ".repeat(CONTEXT_SIZE)).substring(index - CONTEXT_SIZE, index + CONTEXT_SIZE)
+        val firstLine = (input + " ".repeat(CONTEXT_SIZE)).substring(
+            max(index - CONTEXT_SIZE, 0),
+            min(index + CONTEXT_SIZE, input.length + CONTEXT_SIZE)
+        )
         val secondLine = " ".repeat(CONTEXT_SIZE) + "^"
         firstLine to secondLine
     } else {

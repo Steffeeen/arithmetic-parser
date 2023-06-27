@@ -1,3 +1,4 @@
+
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 
@@ -38,5 +39,12 @@ class EvaluatorKtTest {
     fun `order of operations with parenthesis`() {
         val result = evaluate(toAst("(5.0 + 3.0) * 2.0"))
         assertEquals(16.0, result)
+    }
+
+    @Test
+    fun `Division by zero`() {
+        val input = "5.0 / 0.0"
+        val result = evaluate(toAst(input))
+        assertEquals(Double.POSITIVE_INFINITY, result)
     }
 }

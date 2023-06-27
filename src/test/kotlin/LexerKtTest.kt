@@ -41,4 +41,11 @@ class LexerKtTest {
         val result = lex(input)
         assertIs<LexError>(result)
     }
+
+    @Test
+    fun `Invalid characters`() {
+        val input = "2.0 + $3.0"
+        val result = lex(input)
+        assertIs<LexError>(result)
+    }
 }

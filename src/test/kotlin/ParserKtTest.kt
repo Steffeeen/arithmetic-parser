@@ -43,4 +43,44 @@ class ParserKtTest {
         assertIs<ParseError>(result)
         println(createErrorMessage(input, Error.Parse(result)))
     }
+
+    @Test
+    fun `Missing closing parenthesis`() {
+        val input = "5.5 * (0.3"
+        val result = parse(toTokenList(input))
+        assertIs<ParseError>(result)
+        println(createErrorMessage(input, Error.Parse(result)))
+    }
+
+    @Test
+    fun `Missing operators`() {
+        val input = "2.0 3.0"
+        val result = parse(toTokenList(input))
+        assertIs<ParseError>(result)
+        println(createErrorMessage(input, Error.Parse(result)))
+    }
+
+    @Test
+    fun `Missing operands`() {
+        val input = "+"
+        val result = parse(toTokenList(input))
+        assertIs<ParseError>(result)
+        println(createErrorMessage(input, Error.Parse(result)))
+    }
+
+    @Test
+    fun `Unbalanced parentheses`() {
+        val input = "(2.0 + 3.0 * 4.0"
+        val result = parse(toTokenList(input))
+        assertIs<ParseError>(result)
+        println(createErrorMessage(input, Error.Parse(result)))
+    }
+
+    @Test
+    fun `Multiple syntax errors`() {
+        val input = "2.0 + * 3.0"
+        val result = parse(toTokenList(input))
+        assertIs<ParseError>(result)
+        println(createErrorMessage(input, Error.Parse(result)))
+    }
 }

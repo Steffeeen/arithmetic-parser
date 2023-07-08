@@ -2,17 +2,26 @@ private sealed interface InternalLexResult
 private data class InternalLexedToken(val token: Token, val remainingInput: String) : InternalLexResult
 private data class InternalNoLexedToken(val remainingInput: String) : InternalLexResult
 
-sealed interface Token {
-    val index: Int
+enum class TokenType {
+    PLUS,
+    MINUS,
+    STAR,
+    SLASH,
+    LPAREN,
+    RPAREN,
+    NUMBER,
+    EOF,
+}
 
-    data class Plus(override val index: Int) : Token
-    data class Minus(override val index: Int) : Token
-    data class Star(override val index: Int) : Token
-    data class Slash(override val index: Int) : Token
-    data class LParen(override val index: Int) : Token
-    data class RParen(override val index: Int) : Token
-    data class Number(override val index: Int, val value: Double) : Token
-    data class EOF(override val index: Int) : Token
+sealed class Token(open val index: Int, val type: TokenType) {
+    data class Plus(override val index: Int) : Token(index, TokenType.PLUS)
+    data class Minus(override val index: Int) : Token(index, TokenType.MINUS)
+    data class Star(override val index: Int) : Token(index, TokenType.STAR)
+    data class Slash(override val index: Int) : Token(index, TokenType.SLASH)
+    data class LParen(override val index: Int) : Token(index, TokenType.LPAREN)
+    data class RParen(override val index: Int) : Token(index, TokenType.RPAREN)
+    data class Number(override val index: Int, val value: Double) : Token(index, TokenType.NUMBER)
+    data class EOF(override val index: Int) : Token(index, TokenType.EOF)
 }
 
 private fun lexSingleToken(input: String, index: Int): InternalLexResult = when (input.firstOrNull()) {

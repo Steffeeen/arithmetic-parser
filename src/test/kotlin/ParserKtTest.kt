@@ -32,55 +32,63 @@ class ParserKtTest {
     fun `error 1`() {
         val input = "5.5 * ( .3"
         val result = parse(toTokenList(input))
-        assertIs<ParseError>(result)
-        println(createErrorMessage(input, Error.Parse(result)))
+        assertIs<ParseResult.Failed>(result)
+        println(createErrorMessages(input, Error.Parse(result.errors)))
     }
 
     @Test
     fun `error 2`() {
         val input = "1.1 2.0"
         val result = parse(toTokenList(input))
-        assertIs<ParseError>(result)
-        println(createErrorMessage(input, Error.Parse(result)))
+        assertIs<ParseResult.Failed>(result)
+        println(createErrorMessages(input, Error.Parse(result.errors)))
     }
 
     @Test
     fun `Missing closing parenthesis`() {
         val input = "5.5 * (0.3"
         val result = parse(toTokenList(input))
-        assertIs<ParseError>(result)
-        println(createErrorMessage(input, Error.Parse(result)))
+        assertIs<ParseResult.Failed>(result)
+        println(createErrorMessages(input, Error.Parse(result.errors)))
     }
 
     @Test
     fun `Missing operators`() {
         val input = "2.0 3.0"
         val result = parse(toTokenList(input))
-        assertIs<ParseError>(result)
-        println(createErrorMessage(input, Error.Parse(result)))
+        assertIs<ParseResult.Failed>(result)
+        println(createErrorMessages(input, Error.Parse(result.errors)))
     }
 
     @Test
     fun `Missing operands`() {
         val input = "+"
         val result = parse(toTokenList(input))
-        assertIs<ParseError>(result)
-        println(createErrorMessage(input, Error.Parse(result)))
+        assertIs<ParseResult.Failed>(result)
+        println(createErrorMessages(input, Error.Parse(result.errors)))
     }
 
     @Test
     fun `Unbalanced parentheses`() {
         val input = "(2.0 + 3.0 * 4.0"
         val result = parse(toTokenList(input))
-        assertIs<ParseError>(result)
-        println(createErrorMessage(input, Error.Parse(result)))
+        assertIs<ParseResult.Failed>(result)
+        println(createErrorMessages(input, Error.Parse(result.errors)))
     }
 
     @Test
     fun `Multiple syntax errors`() {
         val input = "2.0 + * 3.0"
         val result = parse(toTokenList(input))
-        assertIs<ParseError>(result)
-        println(createErrorMessage(input, Error.Parse(result)))
+        assertIs<ParseResult.Failed>(result)
+        println(createErrorMessages(input, Error.Parse(result.errors)))
+    }
+
+    @Test
+    fun `Multiple syntax errors 2`() {
+        val input = "2.0 + 3.0 + ) + 2.0 * ("
+        val result = parse(toTokenList(input))
+        assertIs<ParseResult.Failed>(result)
+        println(createErrorMessages(input, Error.Parse(result.errors)))
     }
 }

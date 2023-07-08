@@ -7,5 +7,5 @@ fun toTokenList(input: String): List<Token> = when (val result = lex(input)) {
 
 fun toAst(input: String): AstNode = when (val result = parse(toTokenList(input))) {
     is ParseResult.Success -> result.root
-    is ParseError -> fail("parse error: $result")
+    is ParseResult.Failed -> fail("parse error: ${result.errors}")
 }

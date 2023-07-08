@@ -20,135 +20,201 @@ data class Number(val value: Double) : AstNode
 
 sealed interface ParseResult {
     data class Success(val root: AstNode) : ParseResult
-//    data class Error(val message: String) : ParseResult
+    data class Failed(val errors: List<ParseError>) : ParseResult
+}
+
+sealed interface ParseError {
+    data class ExpectedToken(val index: Int, val tokenType: TokenType) : ParseError
+    data class ExpectedOneOfTokens(val index: Int, val expectedTokens: List<TokenType>) : ParseError
+}
+
+private object FirstSets {
+    val SUM = setOf(TokenType.LPAREN, TokenType.NUMBER)
+    val SUM_PART = setOf(TokenType.PLUS, TokenType.MINUS, TokenType.EOF)
+    val PRODUCT = setOf(TokenType.LPAREN, TokenType.NUMBER)
+    val PRODUCT_PART = setOf(TokenType.STAR, TokenType.SLASH, TokenType.EOF)
+    val PRIMITIVE = setOf(TokenType.LPAREN, TokenType.NUMBER)
 }
 
 fun parse(tokens: List<Token>): ParseResult {
-    val (sum, remainingTokens) = parseSum(tokens).onError { return it.toParseError() }
-    expect<Token.EOF>(remainingTokens).onError { return it.toParseError() }
-    return ParseResult.Success(sum)
+    return Parser(tokens).parse()
 }
 
-private sealed interface ParserInternalErrors : ParseSubResult<Nothing>, ExpectResult<Nothing>
+private class Parser(val initialTokens: List<Token>) {
+    var errorMode = false
+    val errors: MutableList<ParseError> = mutableListOf()
+    val remainingTokens = initialTokens.toMutableList()
 
-sealed interface ParseError : ParseResult {
-    data class ExpectedToken(val index: Int, val simpleName: String) : ParseError, ParserInternalErrors
-    data class ExpectedOneOfTokens(val expectedTokens: List<Token>) : ParseError, ParserInternalErrors
+    fun parse(): ParseResult {
+        val sum = parseSum(setOf(TokenType.EOF))
+        expect<Token.EOF>(setOf(TokenType.EOF))
+
+        return if (errors.isEmpty()) {
+            ParseResult.Success(sum!!)
+        } else {
+            ParseResult.Failed(errors)
+        }
+    }
+
+    private fun parseSum(anchors: Set<TokenType>): AstNode? {
+        val product = parseProduct(anchors + FirstSets.SUM_PART)
+        return product?.let { parseSumPart(it, anchors) }
+    }
+
+    private fun parseProduct(anchors: Set<TokenType>): AstNode? {
+        val primitive = parsePrimitive(anchors + FirstSets.PRODUCT_PART)
+        return primitive?.let { parseProductPart(it, anchors) }
+    }
+
+    private fun parseSumPart(left: AstNode, anchors: Set<TokenType>): AstNode? =
+        when (remainingTokens.firstOrNull()) {
+            is Token.Plus -> {
+                val plusToken = expect<Token.Plus>(anchors + FirstSets.PRODUCT + FirstSets.SUM_PART)
+                val right = plusToken?.let { parseProduct(anchors + FirstSets.SUM_PART) }
+                val sum = right?.let { Sum(left, it, Sum.SumSymbol.PLUS) }
+                sum?.let { parseSumPart(it, anchors) }
+            }
+
+            is Token.Minus -> {
+                val minusToken = expect<Token.Minus>(anchors + FirstSets.PRODUCT + FirstSets.SUM_PART)
+                val right = minusToken?.let { parseProduct(anchors + FirstSets.SUM_PART) }
+                val sum = right?.let { Sum(left, it, Sum.SumSymbol.MINUS) }
+                sum?.let { parseSumPart(it, anchors) }
+            }
+
+            is Token.EOF, is Token.RParen -> left
+
+            else -> {
+                val error = ParseError.ExpectedOneOfTokens(
+                    errorIndex(),
+                    listOf(TokenType.PLUS, TokenType.MINUS, TokenType.RPAREN, TokenType.EOF)
+                )
+                handleError(error, anchors + FirstSets.SUM_PART)
+                if (remainingTokens.isNotEmpty()) {
+                    parseSumPart(left, anchors)
+                } else {
+                    null
+                }
+            }
+        }
+
+    private fun parseProductPart(left: AstNode, anchors: Set<TokenType>): AstNode? =
+        when (remainingTokens.firstOrNull()) {
+            is Token.Star -> {
+                val starToken = expect<Token.Star>(anchors + FirstSets.PRIMITIVE + FirstSets.PRODUCT_PART)
+                val primitive = starToken?.let { parsePrimitive(anchors + FirstSets.PRODUCT_PART) }
+                val product = primitive?.let { Product(left, it, Product.ProductSymbol.STAR) }
+                product?.let { parseProductPart(it, anchors) }
+            }
+
+            is Token.Slash -> {
+                val slashToken = expect<Token.Slash>(anchors + FirstSets.PRIMITIVE + FirstSets.PRODUCT_PART)
+                val primitive = slashToken?.let { parsePrimitive(anchors + FirstSets.PRODUCT_PART) }
+                val product = primitive?.let { Product(left, it, Product.ProductSymbol.SLASH) }
+                product?.let { parseProductPart(it, anchors) }
+            }
+
+            is Token.Plus, is Token.Minus, is Token.RParen, is Token.EOF -> left
+
+            else -> {
+                val error = ParseError.ExpectedOneOfTokens(
+                    errorIndex(),
+                    listOf(
+                        TokenType.STAR,
+                        TokenType.SLASH,
+                        TokenType.PLUS,
+                        TokenType.MINUS,
+                        TokenType.RPAREN,
+                        TokenType.EOF,
+                    )
+
+                )
+                handleError(error, anchors + FirstSets.PRODUCT_PART)
+                if (remainingTokens.isNotEmpty()) {
+                    parseProductPart(left, anchors)
+                } else {
+                    null
+                }
+            }
+        }
+
+    private fun parsePrimitive(anchors: Set<TokenType>): AstNode? = when (remainingTokens.firstOrNull()) {
+        is Token.LParen -> {
+            val lParenToken = expect<Token.LParen>(anchors + FirstSets.SUM + TokenType.RPAREN)
+            val sum = lParenToken?.let { parseSum(anchors + TokenType.RPAREN) }
+            val rParenToken = expect<Token.RParen>(anchors)
+            rParenToken?.let { sum }
+        }
+
+        is Token.Number -> {
+            val numberToken = expect<Token.Number>(anchors)
+            numberToken?.let { Number(it.value) }
+        }
+
+        else -> {
+            val error = ParseError.ExpectedOneOfTokens(
+                errorIndex(),
+                listOf(
+                    TokenType.LPAREN,
+                    TokenType.NUMBER
+                )
+            )
+            handleError(error, anchors + FirstSets.PRIMITIVE)
+            if (remainingTokens.isNotEmpty()) {
+                parsePrimitive(anchors)
+            } else {
+                null
+            }
+        }
+    }
+
+    private inline fun <reified T : Token> expect(anchors: Set<TokenType>): T? {
+        if (remainingTokens.isEmpty()) {
+            return null
+        }
+
+        if (remainingTokens.first() !is T) {
+            val error = ParseError.ExpectedToken(errorIndex(), tokenType<T>())
+            handleError(error, anchors + tokenType<T>())
+
+            if (remainingTokens.isEmpty()) {
+                return null
+            }
+
+            if (remainingTokens.first() !is T) {
+                // found token from anchor set, don't consume it
+                return null
+            }
+        }
+
+        val first = remainingTokens.removeFirst()
+        require(first is T)
+
+        errorMode = false
+        return first
+    }
+
+    private fun errorIndex(): Int =
+        if (remainingTokens.isEmpty()) initialTokens.last().index else remainingTokens.first().index
+
+    private fun handleError(error: ParseError, skipUntilTokenSet: Set<TokenType>) {
+        if (!errorMode) {
+            errors += error
+            errorMode = true
+        }
+        remainingTokens.removeFirst()
+        remainingTokens.removeAll(remainingTokens.takeWhile { it.type !in skipUntilTokenSet })
+    }
 }
 
-private fun ParserInternalErrors.toParseError(): ParseError = this as ParseError
-
-private sealed interface ParseSubResult<out T : AstNode> {
-    data class Success<out T : AstNode>(val astNode: T, val remainingTokens: List<Token>) : ParseSubResult<T>
-}
-
-private inline fun <T : AstNode> ParseSubResult<T>.onError(handler: (parseError: ParserInternalErrors) -> Nothing): ParseSubResult.Success<T> =
-    when (this) {
-        is ParserInternalErrors -> handler(this)
-        is ParseSubResult.Success<T> -> this
-    }
-
-private fun parseSum(tokens: List<Token>): ParseSubResult<AstNode> {
-    val (product, remainingTokens) = parseProduct(tokens).onError { return it }
-    return parseSumPart(remainingTokens, product).onError { return it }
-}
-
-private fun parseProduct(tokens: List<Token>): ParseSubResult<AstNode> {
-    val (primitive, remainingTokens) = parsePrimitive(tokens).onError { return it }
-    return parseProductPart(remainingTokens, primitive).onError { return it }
-}
-
-private fun parseSumPart(tokens: List<Token>, left: AstNode): ParseSubResult<AstNode> = when (tokens.first()) {
-    is Token.Plus -> {
-        val (_, remainingTokens) = expect<Token.Plus>(tokens).onError { return it }
-        val (right, remainingTokens2) = parseProduct(remainingTokens).onError { return it }
-        val sum = Sum(left, right, Sum.SumSymbol.PLUS)
-        parseSumPart(remainingTokens2, sum).onError { return it }
-    }
-
-    is Token.Minus -> {
-        val (_, remainingTokens) = expect<Token.Minus>(tokens).onError { return it }
-        val (right, remainingTokens2) = parseProduct(remainingTokens).onError { return it }
-        val sum = Sum(left, right, Sum.SumSymbol.MINUS)
-        parseSumPart(remainingTokens2, sum).onError { return it }
-    }
-
-    is Token.EOF, is Token.RParen -> ParseSubResult.Success(left, tokens)
-
-    else -> ParseError.ExpectedOneOfTokens(
-        listOf(
-            Token.Plus(tokens.first().index),
-            Token.Minus(tokens.first().index),
-            Token.RParen(tokens.first().index),
-            Token.EOF(tokens.first().index)
-        )
-    )
-}
-
-private fun parseProductPart(tokens: List<Token>, left: AstNode): ParseSubResult<AstNode> = when (tokens.first()) {
-    is Token.Star -> {
-        val (_, remainingTokens) = expect<Token.Star>(tokens).onError { return it }
-        val (primitive, remainingTokens2) = parsePrimitive(remainingTokens).onError { return it }
-        val product = Product(left, primitive, Product.ProductSymbol.STAR)
-        parseProductPart(remainingTokens2, product).onError { return it }
-    }
-
-    is Token.Slash -> {
-        val (_, remainingTokens) = expect<Token.Slash>(tokens).onError { return it }
-        val (primitive, remainingTokens2) = parsePrimitive(remainingTokens).onError { return it }
-        val product = Product(left, primitive, Product.ProductSymbol.SLASH)
-        parseProductPart(remainingTokens2, product).onError { return it }
-    }
-
-    is Token.Plus, is Token.Minus, is Token.RParen, is Token.EOF -> ParseSubResult.Success(left, tokens)
-
-    else -> ParseError.ExpectedOneOfTokens(
-        listOf(
-            Token.Star(tokens.first().index),
-            Token.Slash(tokens.first().index),
-            Token.Plus(tokens.first().index),
-            Token.Minus(tokens.first().index),
-            Token.RParen(tokens.first().index),
-            Token.EOF(tokens.first().index),
-        )
-    )
-}
-
-private fun parsePrimitive(tokens: List<Token>): ParseSubResult<AstNode> = when (tokens.first()) {
-    is Token.LParen -> {
-        val (_, remainingTokens) = expect<Token.LParen>(tokens).onError { return it }
-        val (sum, remainingTokens2) = parseSum(remainingTokens).onError { return it }
-        val (_, remainingTokens3) = expect<Token.RParen>(remainingTokens2).onError { return it }
-        ParseSubResult.Success(sum, remainingTokens3)
-    }
-
-    is Token.Number -> {
-        val (number, remainingTokens) = expect<Token.Number>(tokens).onError { return it }
-        ParseSubResult.Success(Number(number.value), remainingTokens)
-    }
-
-    else -> ParseError.ExpectedOneOfTokens(
-        listOf(
-            Token.LParen(tokens.first().index),
-            Token.Number(tokens.first().index, 0.0)
-        )
-    )
-}
-
-private sealed interface ExpectResult<out T : Token> {
-    data class Success<T : Token>(val token: T, val remainingTokens: List<Token>) : ExpectResult<T>
-}
-
-private inline fun <T : Token> ExpectResult<T>.onError(handler: (parseError: ParserInternalErrors) -> Nothing): ExpectResult.Success<T> =
-    when (this) {
-        is ParserInternalErrors -> handler(this)
-        is ExpectResult.Success<T> -> this
-    }
-
-private inline fun <reified T : Token> expect(tokens: List<Token>): ExpectResult<T> {
-    val first = tokens.first()
-    if (first !is T) {
-        return ParseError.ExpectedToken(first.index, T::class.simpleName!!)
-    }
-    return ExpectResult.Success(first, tokens.drop(1))
+private inline fun <reified T : Token> tokenType(): TokenType = when {
+    Token.Plus(0) is T -> TokenType.PLUS
+    Token.Minus(0) is T -> TokenType.MINUS
+    Token.Star(0) is T -> TokenType.STAR
+    Token.Slash(0) is T -> TokenType.SLASH
+    Token.LParen(0) is T -> TokenType.LPAREN
+    Token.RParen(0) is T -> TokenType.RPAREN
+    Token.Number(0, 0.0) is T -> TokenType.NUMBER
+    Token.EOF(0) is T -> TokenType.EOF
+    else -> error("should never happen")
 }
